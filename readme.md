@@ -18,6 +18,8 @@
 ## Need to Change Server?
 Tap the "Reset Connection" option in the browser menu to start fresh with a new server address.
 
+Then Tap on "X" Button on the left to close the app or return to the Connection Setup Menu.
+
 ## System Requirements
 - Android 5.0 or higher
 - Internet connection
