@@ -8,13 +8,18 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/device_manager"
+        android:roundIcon="@mipmap/device_manager_round"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.DeviceManager"
-        tools:targetApi="31">
-        <activity
+        tools:targetApi="21">
+
+
+
+    <receiver android:name=".ResetUrlReceiver" android:exported="false" />
+
+    <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"

@@ -1,84 +1,117 @@
 package com.example.devicemanager.ui.screens
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.devicemanager.R
 import com.example.devicemanager.viewmodels.ConnectionViewModel
-import com.example.devicemanager.viewmodels.ConnectionState
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import WebViewScreen
+import com.example.devicemanager.ui.theme.*
 
 @Composable
-fun ConnectionScreen() {
-    val viewModel: ConnectionViewModel = viewModel()
-    var ipAddress by remember { mutableStateOf("") }
-    val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
-    
-    when (connectionState) {
-        is ConnectionState.Loading -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
+fun ConnectionScreen(
+    viewModel: ConnectionViewModel = viewModel(),
+    onNavigateToDeviceScreen: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsState()
+
+    Card(
+        modifier = Modifier
+            .padding(16.dp)
+            .fillMaxWidth()
+            .wrapContentHeight(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = BootstrapWhite,
+        ),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, BootstrapBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(24.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.device_manager),
+                contentDescription = "Device Manager Icon",
+                modifier = Modifier
+                    .size(80.dp)
+                    .padding(bottom = 8.dp)
+            )
+
+            Text(
+                text = "Device Manager Setup",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = BootstrapText
+            )
+
+            OutlinedTextField(
+                value = uiState.deviceId,
+                onValueChange = { viewModel.updateDeviceId(it) },
+                label = { Text("Enter Server IP Address", color = BootstrapText) },
+                modifier = Modifier.fillMaxWidth(),
+                isError = uiState.error != null,
+                shape = RoundedCornerShape(4.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = BootstrapPrimary,
+                    unfocusedBorderColor = BootstrapBorder,
+                    cursorColor = BootstrapPrimary,
+                    focusedLabelColor = BootstrapPrimary
+                )
+            )
+
+            if (uiState.error != null) {
+                Text(
+                    text = uiState.error!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-        }
-        is ConnectionState.Connected -> {
-            WebViewScreen((connectionState as ConnectionState.Connected).serverIp)
-        }
-        else -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+
+            Button(
+                onClick = {
+                    viewModel.connect(context, onNavigateToDeviceScreen)
+
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                enabled = !uiState.isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BootstrapPrimary,
+                    contentColor = BootstrapWhite
+                ),
+                shape = RoundedCornerShape(4.dp)
             ) {
-                Card(
-                    modifier = Modifier
-                        .width(400.dp)
-                        .padding(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Connect to Server",
-                            style = MaterialTheme.typography.headlineMedium
-                        )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        OutlinedTextField(
-                            value = ipAddress,
-                            onValueChange = { ipAddress = it },
-                            label = { Text("Server IP Address") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Button(
-                            onClick = { viewModel.connectToServer(ipAddress) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Connect")
-                        }
-                        
-                        if (connectionState is ConnectionState.Error) {
-                            Text(
-                                text = (connectionState as ConnectionState.Error).message,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
+                if (uiState.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = BootstrapWhite,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        "Connect",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }
     }
 }
-

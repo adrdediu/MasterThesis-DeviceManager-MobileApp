@@ -45,6 +45,8 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-livedata:1.5.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
+
 
     implementation("androidx.webkit:webkit:1.8.0")
     implementation("androidx.browser:browser:1.7.0")
