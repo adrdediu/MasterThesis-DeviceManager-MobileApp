@@ -31,8 +31,12 @@ Tap the "Reset Connection" option in the browser menu to start fresh with a new 
 - Camera permission for QR Code Scanning
 - Permission to install apps from unknown sources (if installing via APK)
 
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+
+
 ## Version History
 - v1.1.0: Added QR Code Scanning, Server Verification, Improved UI/UX
 - v1.0.0: Initial release
 
-[Download Latest Version](link-to-releases)
+[Download Latest Version](https://github.com/adrdediu/MasterThesis-DeviceManager-MobileApp/releases)
