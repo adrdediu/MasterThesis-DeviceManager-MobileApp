@@ -15,10 +15,23 @@ import android.webkit.URLUtil
 import android.widget.Toast
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
+import com.example.devicemanager.QRScannerActivity
+import com.example.devicemanager.QRScannerReceiver
 import com.example.devicemanager.ResetUrlReceiver
 import com.example.devicemanager.ui.screens.ConnectionScreenState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.cert.X509Certificate
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.X509TrustManager
 
 sealed class ConnectionState {
     object Disconnected : ConnectionState()
@@ -29,9 +42,6 @@ sealed class ConnectionState {
 
 
 class ConnectionViewModel : ViewModel() {
-    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    val connectionState: StateFlow<ConnectionState> = _connectionState
-
     private val _uiState = MutableStateFlow(ConnectionScreenState())
     val uiState: StateFlow<ConnectionScreenState> = _uiState.asStateFlow()
 
@@ -39,62 +49,75 @@ class ConnectionViewModel : ViewModel() {
         _uiState.update { it.copy(deviceId = deviceId) }
     }
 
-    fun connect(context: Context, onNavigateToDeviceScreen: () -> Unit) {
+    private fun createTrustAllSSLContext(): SSLContext {
+        return SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf(object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+                override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            }), null)
+        }
+    }
+
+    fun connect(context: Context, onSuccess: () -> Unit) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            val sharedPrefs = context.getSharedPreferences("device_manager", Context.MODE_PRIVATE)
             val address = uiState.value.deviceId
+
             if (isValidAddress(address)) {
-
-
                 val finalUrl = when {
-                    address.startsWith("http://") || address.startsWith("https://") -> address
-                    else -> "https://192.168.0.100"
+                    address.startsWith("https://") -> address
+                    address.startsWith("http://") -> address.replace("http://", "https://")
+                    else -> "https://$address"
                 }
 
-                val colorSchemeParams = CustomTabColorSchemeParams.Builder()
-                    .setToolbarColor(android.graphics.Color.TRANSPARENT)
-                    .build()
+                try {
+                    withContext(Dispatchers.IO) {
+                        val url = URL("$finalUrl/api/identify")
+                        val connection = url.openConnection() as HttpsURLConnection
+                        connection.sslSocketFactory = createTrustAllSSLContext().socketFactory
+                        connection.hostnameVerifier = HostnameVerifier { _, _ -> true }
+                        connection.connectTimeout = 5000
+                        connection.readTimeout = 5000
 
-                val pendingIntent = PendingIntent.getBroadcast(
-                    context,
-                    0,
-                    Intent(context, ResetUrlReceiver::class.java),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-
-                val customTabsIntent = CustomTabsIntent.Builder()
-                    .setShowTitle(false)
-                    .setDefaultColorSchemeParams(colorSchemeParams)
-                    .setCloseButtonPosition(CustomTabsIntent.CLOSE_BUTTON_POSITION_START)
-                    .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
-                    .setToolbarColor(android.graphics.Color.TRANSPARENT)
-                    .addMenuItem("Reset Connection", pendingIntent)
-                    .setDownloadButtonEnabled(false)
-                    .build()
-
-                Toast.makeText(context, "Server found! Connecting...", Toast.LENGTH_SHORT).show()
-                delay(1000)
-
-
-                sharedPrefs.edit().putString("saved_url", finalUrl).apply()
-                customTabsIntent.launchUrl(context, Uri.parse(finalUrl))
-
+                        try {
+                            connection.connect()
+                            val responseCode = connection.responseCode
+                            if (responseCode == 200) {
+                                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                                val jsonResponse = JSONObject(response)
+                                if (jsonResponse.getString("identifier") == "dm_server_v1" &&
+                                    jsonResponse.getString("server") == "device_manager") {
+                                    _uiState.update { it.copy(deviceId = finalUrl) }
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Server found! Connecting...", Toast.LENGTH_SHORT).show()
+                                        delay(1000)
+                                        onSuccess()
+                                    }
+                                } else {
+                                    throw IOException("Invalid server identifier")
+                                }
+                            } else {
+                                throw IOException("Server returned $responseCode")
+                            }
+                        } finally {
+                            connection.disconnect()
+                        }
+                    }
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = "Could not connect to server") }
+                    Toast.makeText(context, "Failed to connect to server", Toast.LENGTH_SHORT).show()
+                }
             } else {
-                Toast.makeText(context, "Failed to find server", Toast.LENGTH_SHORT).show()
-                _uiState.update { it.copy(error = "Invalid server address !") }
+                _uiState.update { it.copy(error = "Invalid server address!") }
             }
 
             _uiState.update { it.copy(isLoading = false) }
         }
     }
 
-
-
-
     private fun isValidAddress(address: String): Boolean {
         val ipPattern = """^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$""".toRegex()
         return address.matches(ipPattern) || URLUtil.isValidUrl("https://$address")
     }
-
 }

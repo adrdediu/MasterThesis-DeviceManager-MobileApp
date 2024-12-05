@@ -1,5 +1,6 @@
 package com.example.devicemanager
 
+import android.app.Activity
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -32,45 +33,17 @@ fun MainContent() {
     val context = LocalContext.current
     val sharedPrefs = context.getSharedPreferences("device_manager", Context.MODE_PRIVATE)
     val savedUrl = remember { sharedPrefs.getString("saved_url", null) }
-    val (currentUrl, setCurrentUrl) = remember { mutableStateOf<String?>(savedUrl) }
     val (isLoading, setIsLoading) = remember { mutableStateOf(true) }
     val viewModel: ConnectionViewModel = viewModel()
-    val uiState = viewModel.uiState.collectAsState().value
-    val activity = (context as? ComponentActivity)
+
     LaunchedEffect(Unit) {
-        delay(1500) // Show loading for 1.5 seconds
+        delay(500)
         if (savedUrl != null) {
-            val finalUrl = when {
-                savedUrl.startsWith("http://") || savedUrl.startsWith("https://") -> savedUrl
-                else -> "https://$savedUrl"
+            val intent = Intent(context, WebViewActivity::class.java).apply {
+                putExtra("url", savedUrl)
             }
-
-            val colorSchemeParams = CustomTabColorSchemeParams.Builder()
-                .setToolbarColor(android.graphics.Color.TRANSPARENT)
-                .build()
-
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                0,
-                Intent(context, ResetUrlReceiver::class.java),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-
-            val customTabsIntent = CustomTabsIntent.Builder()
-                .setShowTitle(false)
-                .setDefaultColorSchemeParams(colorSchemeParams)
-                .setCloseButtonPosition(CustomTabsIntent.CLOSE_BUTTON_POSITION_START)
-                .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
-                .setToolbarColor(android.graphics.Color.TRANSPARENT)
-                .addMenuItem("Reset Connection", pendingIntent)
-                .setDownloadButtonEnabled(false)
-                .build()
-
-            customTabsIntent.launchUrl(context, Uri.parse(finalUrl))
-            activity?.finish()
-
-
+            context.startActivity(intent)
+            (context as? Activity)?.finish()
         }
         setIsLoading(false)
     }
@@ -80,14 +53,18 @@ fun MainContent() {
             isLoading -> LoadingScreen()
             savedUrl == null -> ConnectionScreen(
                 onNavigateToDeviceScreen = {
-                    sharedPrefs.edit().putString("saved_url", uiState.deviceId).apply()
-                    setCurrentUrl(uiState.deviceId)
+                    val newUrl = viewModel.uiState.value.deviceId
+                    sharedPrefs.edit().putString("saved_url", newUrl).apply()
+                    val intent = Intent(context, WebViewActivity::class.java).apply {
+                        putExtra("url", newUrl)
+                    }
+                    context.startActivity(intent)
+                    (context as? Activity)?.finish()
                 }
             )
         }
     }
 }
-
 
 @Composable
 fun LoadingScreen() {
