@@ -1,14 +1,33 @@
 package com.example.devicemanager
-
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Log
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
@@ -39,6 +58,16 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.devicemanager.ui.theme.DeviceManagerTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 
 class WebViewActivity : ComponentActivity() {
     private lateinit var webView: WebView
@@ -170,8 +199,22 @@ class WebViewActivity : ComponentActivity() {
         startActivity(Intent(this, MainActivity::class.java))
         finishAffinity()
     }
-}
 
+
+
+}
+private fun createTrustAllCerts(): SSLSocketFactory {
+    val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+        override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+    })
+
+    val sslContext = SSLContext.getInstance("SSL")
+    sslContext.init(null, trustAllCerts, SecureRandom())
+    return sslContext.socketFactory
+}
+@SuppressLint("ServiceCast", "NewApi")
 @Composable
 private fun WebContent(
     url: String,
@@ -194,6 +237,65 @@ private fun WebContent(
                     loadWithOverviewMode = true
                     useWideViewPort = true
                     setSupportZoom(true)
+                }
+
+                setDownloadListener { downloadUrl, userAgent, contentDisposition, mimetype, contentLength ->
+                    val scope = CoroutineScope(Dispatchers.IO)
+
+                    scope.launch {
+                        try {
+                            val url = URL(downloadUrl)
+                            val connection = url.openConnection() as HttpsURLConnection
+                            connection.sslSocketFactory = createTrustAllCerts()
+                            connection.hostnameVerifier = HostnameVerifier { _, _ -> true }
+
+                            connection.requestMethod = "GET"
+                            connection.setRequestProperty("User-Agent", userAgent)
+
+                            val cookies = CookieManager.getInstance().getCookie(downloadUrl)
+                            cookies?.let { connection.setRequestProperty("Cookie", it) }
+
+                            connection.connect()
+
+                            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                                throw IOException("Server returned HTTP ${connection.responseCode}")
+                            }
+
+                            val filename = URLUtil.guessFileName(downloadUrl, contentDisposition, mimetype)
+
+                            // New code starts here
+                            val contentResolver = context.contentResolver
+                            val contentValues = ContentValues().apply {
+                                put(MediaStore.Downloads.DISPLAY_NAME, filename)
+                                put(MediaStore.Downloads.MIME_TYPE, mimetype)
+                                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                            }
+
+                            val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                            uri?.let { downloadUri ->
+                                contentResolver.openOutputStream(downloadUri)?.use { outputStream ->
+                                    val input = BufferedInputStream(connection.inputStream)
+                                    val data = ByteArray(1024)
+                                    var count: Int
+                                    while (input.read(data).also { count = it } != -1) {
+                                        outputStream.write(data, 0, count)
+                                    }
+                                    input.close()
+                                }
+                            }
+                            // New code ends here
+
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Download completed: $filename", Toast.LENGTH_SHORT).show()
+                            }
+
+                        } catch (e: Exception) {
+                            Log.e("Download", "Error: ${e.message}")
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
                 }
 
                 webChromeClient = object : WebChromeClient() {
