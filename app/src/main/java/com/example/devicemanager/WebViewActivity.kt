@@ -243,6 +243,10 @@ private fun WebContent(
                     val scope = CoroutineScope(Dispatchers.IO)
 
                     scope.launch {
+                        val notificationHelper = NotificationHelper(context)
+                        var downloadNotification: NotificationHelper.DownloadNotificationBuilder? = null
+
+
                         try {
                             val url = URL(downloadUrl)
                             val connection = url.openConnection() as HttpsURLConnection
@@ -271,28 +275,40 @@ private fun WebContent(
                                 put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                             }
 
+                            downloadNotification = notificationHelper.createDownloadNotification(filename)
+
+
                             val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                             uri?.let { downloadUri ->
                                 contentResolver.openOutputStream(downloadUri)?.use { outputStream ->
                                     val input = BufferedInputStream(connection.inputStream)
                                     val data = ByteArray(1024)
                                     var count: Int
+                                    var bytesDownloaded: Long = 0
+                                    val totalBytes = connection.contentLength.toLong()
+
                                     while (input.read(data).also { count = it } != -1) {
                                         outputStream.write(data, 0, count)
+                                        bytesDownloaded += count
+                                        downloadNotification.updateProgress(bytesDownloaded, totalBytes)
                                     }
                                     input.close()
                                 }
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Download completed: $filename", Toast.LENGTH_SHORT).show()
+                                    downloadNotification.completeDownload(
+                                        uri = downloadUri,
+                                        mimeType = contentValues.getAsString(MediaStore.Downloads.MIME_TYPE) // or your specific MIME type
+                                    )
+                                }
                             }
-                            // New code ends here
-
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(context, "Download completed: $filename", Toast.LENGTH_SHORT).show()
-                            }
-
                         } catch (e: Exception) {
                             Log.e("Download", "Error: ${e.message}")
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                if (downloadNotification != null) {
+                                    downloadNotification.failDownload(e.message ?: "Unknown error")
+                                }
                             }
                         }
                     }

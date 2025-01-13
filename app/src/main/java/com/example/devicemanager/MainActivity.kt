@@ -80,11 +80,24 @@ fun LoadingScreen() {
 }
 
 class MainActivity : ComponentActivity() {
+    private lateinit var permissionManager: PermissionManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        permissionManager = PermissionManager(this)
+        permissionManager.checkAndRequestPermissions()
+
         setContent {
             DeviceManagerTheme {
-                MainContent()
+                val permissionsGranted by permissionManager.permissionsGranted.collectAsState()
+
+                if (permissionsGranted) {
+                    MainContent()
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
             }
         }
     }
